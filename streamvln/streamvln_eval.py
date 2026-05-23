@@ -312,9 +312,9 @@ class VLNEvaluator:
                         # import ipdb; ipdb.set_trace()
                         if step_id != 0 and step_id % self.num_frames == 0:
                             if self.num_history is None:
-                                history_ids = slice(0, time_ids[0], self.num_future_steps)
+                                history_ids = slice(0, time_ids[0], self.num_future_steps) # 固定间隔采样历史帧
                             else:
-                                history_ids = slice(0, time_ids[0], (time_ids[0] // self.num_history))
+                                history_ids = slice(0, time_ids[0], (time_ids[0] // self.num_history)) # 固定数量采样历史帧
                             images = rgb_list[history_ids] + images
                             depths = depth_list[history_ids] + depths
                             poses = pose_list[history_ids] + poses
@@ -404,7 +404,8 @@ class VLNEvaluator:
 
         image_token_index = tokenizer.convert_tokens_to_ids("<image>")
         memory_token_index = tokenizer.convert_tokens_to_ids("<memory>")
-        im_start, im_end = tokenizer.additional_special_tokens_ids
+        im_start = tokenizer.convert_tokens_to_ids("<|im_start|>")
+        im_end = tokenizer.convert_tokens_to_ids("<|im_end|>")
         # unmask_tokens = ["<|im_start|>", "<|im_start|>", "\n"]
         unmask_tokens_idx =  [198, im_start, im_end]
         nl_tokens = tokenizer("\n").input_ids
