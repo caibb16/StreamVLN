@@ -3,8 +3,12 @@ import os
 import numpy as np
 from PIL import Image
 
-# Add third_party path to sys.path for Grounded-Segment-Anything
+# Add UniGoal and third_party paths
+UNIGOAL_PATH = '/data1/code/seu004/czd/UniGoal'
 THIRD_PARTY_PATH = os.path.join(os.path.dirname(__file__), '..', 'third_party', 'Grounded-Segment-Anything')
+
+if UNIGOAL_PATH not in sys.path:
+    sys.path.insert(0, UNIGOAL_PATH)
 if THIRD_PARTY_PATH not in sys.path:
     sys.path.insert(0, THIRD_PARTY_PATH)
 sys.path.append(os.path.join(THIRD_PARTY_PATH, 'GroundingDINO'))
