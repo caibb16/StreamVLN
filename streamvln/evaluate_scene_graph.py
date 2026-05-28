@@ -70,7 +70,7 @@ class VLNEvaluator:
         self.use_scene_graph = use_scene_graph
         self.scene_graph_builder = None
         if self.use_scene_graph and sg_args is not None:
-            from scene_graph_builder import SceneGraphBuilder
+            from streamvln.scene_graph_builder import SceneGraphBuilder
             self.scene_graph_builder = SceneGraphBuilder(sg_args)
 
         with habitat.config.read_write(self.config):

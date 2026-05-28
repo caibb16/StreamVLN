@@ -1,0 +1,24 @@
+# Scene Graph Configuration for StreamVLN Integration
+
+map_resolution: 5
+map_size_cm: 4800
+map_size: 96
+device: cuda
+env_frame_height: 480
+env_frame_width: 640
+hfov: 79
+
+# Model paths
+base_url: ""
+api_key: ""
+llm_model: ""
+vlm_model: ""
+
+# Grounded-SAM paths (relative to StreamVLN root)
+groundingdino_config: third_party/Grounded-Segment-Anything/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py
+groundingdino_checkpoint: /data1/code/seu004/models/groundingdino_swint_ogc.pth
+sam_version: vit_h
+sam_checkpoint: /data1/code/seu004/models/sam_vit_h_4b8939.pth
+
+# Node space for detection
+node_space: "table. tv. chair. cabinet. sofa. bed. windows. kitchen. bedroom. living room. mirror. plant. curtain. painting. picture"

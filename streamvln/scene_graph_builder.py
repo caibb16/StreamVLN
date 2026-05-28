@@ -3,6 +3,14 @@ import os
 import numpy as np
 from PIL import Image
 
+# Add third_party path to sys.path for Grounded-Segment-Anything
+THIRD_PARTY_PATH = os.path.join(os.path.dirname(__file__), '..', 'third_party', 'Grounded-Segment-Anything')
+if THIRD_PARTY_PATH not in sys.path:
+    sys.path.insert(0, THIRD_PARTY_PATH)
+sys.path.append(os.path.join(THIRD_PARTY_PATH, 'GroundingDINO'))
+sys.path.append(os.path.join(THIRD_PARTY_PATH, 'segment_anything'))
+
+
 class SceneGraphBuilder:
     """Wraps UniGoal Graph for incremental scene graph construction."""
 
