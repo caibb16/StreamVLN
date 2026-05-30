@@ -1,6 +1,9 @@
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 import re
 import tqdm
 import torch
@@ -311,8 +314,11 @@ class VLNEvaluator:
                             # Inject scene graph text into memory section
                             if self.use_scene_graph and self.scene_graph_builder is not None:
                                 scene_graph_text = self.scene_graph_builder.get_memory_text()
+                                print(f"[DEBUG] step={step_id}, object_history={len(self.scene_graph_builder.object_history)}, relation_history={len(self.scene_graph_builder.relation_history)}")
+                                print(f"[DEBUG] scene_graph_text: {scene_graph_text}")
                                 if scene_graph_text:
                                     sources[0]["value"] += f' {scene_graph_text}'
+                                    print(f"[DEBUG] Scene graph INJECTED into prompt")
                             sources[0]["value"] = sources[0]["value"].replace(DEFAULT_VIDEO_TOKEN+'\n', '')
                             sources[0]["value"] = sources[0]["value"].replace('<instruction>.', episode.instruction.instruction_text)
                             add_system = True
