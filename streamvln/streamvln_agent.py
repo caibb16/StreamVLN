@@ -26,6 +26,7 @@ from model.stream_video_vln import StreamVLNForCausalLM
 from utils.utils import dict_to_cuda
 from utils.dist import *
 from utils.utils import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX, DEFAULT_MEMORY_TOKEN, MEMORY_TOKEN_INDEX, DEFAULT_VIDEO_TOKEN
+from scene_graph_integration import SceneGraphIntegrator, SceneGraphEnhancedPrompt
 
 
 class VLNEvaluator:
@@ -35,20 +36,21 @@ class VLNEvaluator:
         model: Any = None,
         tokenizer: Any = None,
         args: argparse.Namespace = None,
+        enable_scene_graph: bool = False,
     ):
         self.args = args
         self.device = torch.device('cuda:0')
         self.sim_sensors_config = sim_sensors_config
         self.intrinsic_matrix = self.sim_sensors_config["camera_intrinsic"] #(4,4)
         self.image_processor = model.get_vision_tower().image_processor
-        self.model : StreamVLNForCausalLM = model 
+        self.model : StreamVLNForCausalLM = model
         self.tokenizer = tokenizer
         self.tokenizer.add_tokens(["<image>"], special_tokens=True)
         self.tokenizer.add_tokens(["<memory>"], special_tokens=True)
         prompt = f"<video>\nYou are an autonomous navigation assistant. Your task is to <instruction>. Devise an action sequence to follow the instruction using the four actions: TURN LEFT (←) or TURN RIGHT (→) by 15 degrees, MOVE FORWARD (↑) by 25 centimeters, or STOP."
         answer = ""
         self.conversation = [{"from": "human", "value": prompt}, {"from": "gpt", "value": answer}]
-        
+
         self.actions2idx = OrderedDict({
             'STOP': [0],
             "↑": [1],
@@ -71,7 +73,18 @@ class VLNEvaluator:
         self.num_frames = args.num_frames
         self.num_future_steps = args.num_future_steps
         self.num_history = args.num_history
-        
+
+        # Scene Graph Integration
+        self.enable_scene_graph = enable_scene_graph
+        self.scene_graph_integrator = None
+        if enable_scene_graph:
+            try:
+                self.scene_graph_integrator = SceneGraphIntegrator(args, device=self.device)
+                print("Scene Graph integration enabled")
+            except Exception as e:
+                print(f"Warning: Failed to initialize SceneGraphIntegrator: {e}")
+                self.enable_scene_graph = False
+
         print(f"num_frames: {self.num_frames}, num_future_steps: {self.num_future_steps}, num_history: {self.num_history}")
         self.rgb_list = []
         self.depth_list = []
@@ -97,7 +110,26 @@ class VLNEvaluator:
         self.step_id = 0
         self.last_image = None
         self.model.reset_for_env(0)
-    
+
+    def _extract_pose(self, camera_pose):
+        """
+        Extract (x, y, theta) from 4x4 camera pose matrix.
+
+        Args:
+            camera_pose: 4x4 transformation matrix
+
+        Returns:
+            (x, y, theta) tuple
+        """
+        # Extract translation
+        x = camera_pose[0, 3]
+        y = camera_pose[1, 3]
+
+        # Extract yaw angle from rotation matrix
+        theta = np.arctan2(camera_pose[1, 0], camera_pose[0, 0])
+
+        return (x, y, theta)
+
     def parse_actions(self, output):
         action_patterns = '|'.join(re.escape(action) for action in self.actions2idx)
         regex = re.compile(action_patterns)
@@ -166,13 +198,27 @@ class VLNEvaluator:
 
         return input_ids,  conversations # tensor(bs x seq_len)
 
-    def step(self, idx, rgb, instruction_text='', run_model=False):
+    def step(self, idx, rgb, instruction_text='', run_model=False, goal_text=None):
         # Step 0. Fake some unused observation
         # Currently the model does not use voxel pooling. So we only use the rgb
         camera_pose = np.eye(4)
         depth = np.zeros((rgb.shape[0], rgb.shape[1], 1))
         intrinsic = torch.from_numpy(self.intrinsic_matrix).float()
-        
+
+        # Step 0.5 Update Scene Graph if enabled
+        scene_context = ""
+        if self.enable_scene_graph and self.scene_graph_integrator is not None and run_model:
+            try:
+                # Extract pose from camera_pose (4x4 matrix)
+                pose = self._extract_pose(camera_pose)
+                self.scene_graph_integrator.update_observation(
+                    rgb, depth, pose, goal_text or instruction_text
+                )
+                scene_context = self.scene_graph_integrator.get_scene_context()
+            except Exception as e:
+                print(f"Scene Graph update error: {e}")
+                scene_context = ""
+
         # Step 1. Preprocess images
         if run_model:
             image = Image.fromarray(rgb).convert('RGB')
@@ -181,13 +227,13 @@ class VLNEvaluator:
 
         if not run_model:
             image = self.last_image
-        
-        self.time_ids.append(self.step_id)    
+
+        self.time_ids.append(self.step_id)
         self.rgb_list.append(image)
         self.depth_list.append(torch.from_numpy(depth).float())
-        self.pose_list.append(torch.from_numpy(camera_pose)) 
+        self.pose_list.append(torch.from_numpy(camera_pose))
         self.intrinsic_list.append(intrinsic)
-        
+
         # Step 2. Reset all conversation history when needed
         if not run_model:
             if self.use_memory_tokens and (self.step_id + 1) % self.num_frames == 0:
@@ -196,6 +242,8 @@ class VLNEvaluator:
                 self.output_ids = None
                 self.past_key_values = None
                 self.time_ids = []
+                if self.enable_scene_graph and self.scene_graph_integrator is not None:
+                    self.scene_graph_integrator.reset()
             return None, 0, None
 
         # Step 3. Prepare input for model
@@ -206,6 +254,11 @@ class VLNEvaluator:
                 sources[0]["value"] += f' You have visited these areas {DEFAULT_MEMORY_TOKEN}.'
             sources[0]["value"] = sources[0]["value"].replace(DEFAULT_VIDEO_TOKEN+'\n', '')
             sources[0]["value"] = sources[0]["value"].replace('<instruction>.', instruction_text)
+
+            # Append Scene Graph context if available
+            if scene_context:
+                sources[0]["value"] += f" {scene_context}"
+
             add_system = True
             print(self.step_id, sources[0]["value"])
         else:
