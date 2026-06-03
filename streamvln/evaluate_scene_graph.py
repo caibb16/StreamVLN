@@ -304,6 +304,7 @@ class VLNEvaluator:
                     if info['top_down_map'] is not None:
                         frame = observations_to_image({'rgb':observations['rgb']}, info)
                         vis_frames.append(frame)
+
                     # import ipdb; ipdb.set_trace()
                     if len(action_seq) == 0:
                         if output_ids is None:
@@ -314,11 +315,8 @@ class VLNEvaluator:
                             # Inject scene graph text into memory section
                             if self.use_scene_graph and self.scene_graph_builder is not None:
                                 scene_graph_text = self.scene_graph_builder.get_memory_text()
-                                print(f"[DEBUG] step={step_id}, object_history={len(self.scene_graph_builder.object_history)}, relation_history={len(self.scene_graph_builder.relation_history)}")
-                                print(f"[DEBUG] scene_graph_text: {scene_graph_text}")
                                 if scene_graph_text:
                                     sources[0]["value"] += f' {scene_graph_text}'
-                                    print(f"[DEBUG] Scene graph INJECTED into prompt")
                             sources[0]["value"] = sources[0]["value"].replace(DEFAULT_VIDEO_TOKEN+'\n', '')
                             sources[0]["value"] = sources[0]["value"].replace('<instruction>.', episode.instruction.instruction_text)
                             add_system = True
@@ -369,7 +367,8 @@ class VLNEvaluator:
 
                     observations = env.step(action)
 
-                    # Update scene graph with new observation
+                    # Update scene graph after env.step() - original 2-step cadence
+                    # This ensures scene graph is built up over time
                     if self.use_scene_graph and self.scene_graph_builder is not None:
                         self.scene_graph_builder.update(observations)
 
@@ -393,6 +392,12 @@ class VLNEvaluator:
                 oss.append(metrics['oracle_success'])
                 ones.append(metrics['distance_to_goal'])
                 print(f"scene_episode {scene_id}_{episode_id} success: {metrics['success']}, spl: {metrics['spl']}, os: {metrics['oracle_success']}, ne: {metrics['distance_to_goal']}")
+
+                # Print running average (only rank 0)
+                if get_rank() == 0:
+                    total = len(sucs)
+                    print(f"[RUNNING AVG] Success: {sum(sucs)/total:.4f}, SPL: {sum(spls)/total:.4f}, OS: {sum(oss)/total:.4f}, NE: {sum(ones)/total:.4f} (n={total})")
+
                 result = {
                     "scene_id": scene_id,
                     "episode_id": episode_id,
@@ -418,8 +423,6 @@ class VLNEvaluator:
         actions = [self.actions2idx[match] for match in matches]
         actions = itertools.chain.from_iterable(actions)
         return list(actions)
-
-
 
     def preprocess_qwen(self, sources, tokenizer: transformers.PreTrainedTokenizer, has_image: bool = False, max_len=2048, system_message: str = "You are a helpful assistant.",add_system: bool = False):
         # roles = {"human": "<|im_start|>user", "gpt": "<|im_start|>assistant"}

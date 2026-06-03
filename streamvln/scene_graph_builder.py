@@ -43,6 +43,7 @@ class SimpleSceneGraphBuilder:
 
 class SceneGraphBuilder:
     USE_SIMPLE = False  # Set to True to use simple builder without heavy models
+    UPDATE_INTERVAL = 2  # Update scene graph every N env steps
 
     def __init__(self, args):
         if self.USE_SIMPLE:
@@ -55,15 +56,23 @@ class SceneGraphBuilder:
         self.relation_history = []
 
     def update(self, obs):
-        self.step_count += 1
+        """Update scene graph with the observation from the just-finished env.step().
+
+        Cadence is built in: a real VLM update runs every UPDATE_INTERVAL steps.
+        Other steps are cheap no-ops (just bookkeeping).
+        """
         if self.USE_SIMPLE:
             self.simple_builder.update(obs)
-        else:
-            if self.step_count % 2 == 0:
-                self.graph.set_observations(obs)
-                self.graph.set_navigate_steps(self.step_count)
-                self.graph.update_scenegraph()
-                self._update_history()
+            return
+
+        self.step_count += 1
+        if self.step_count % self.UPDATE_INTERVAL != 0:
+            return
+
+        self.graph.set_observations(obs)
+        self.graph.set_navigate_steps(self.step_count)
+        self.graph.update_scenegraph()
+        self._update_history()
 
     def _update_history(self):
         sg = self.graph.get_scenegraph()
@@ -72,12 +81,10 @@ class SceneGraphBuilder:
             if obj_name not in self.object_history:
                 self.object_history.append(obj_name)
         for edge in sg['edges']:
-            # print(f"[DEBUG] edge in scenegraph: {edge['source']} -> {edge['target']}, type={repr(edge['type'])}")
             if edge['type']:
                 rel = f"{edge['source'].rsplit('_', 1)[0]} {edge['type']} {edge['target'].rsplit('_', 1)[0]}"
                 if rel not in self.relation_history:
                     self.relation_history.append(rel)
-        # print(f"[DEBUG] _update_history: object_history={self.object_history}, relation_history={self.relation_history}")
 
     def get_memory_text(self):
         if self.USE_SIMPLE:
@@ -85,8 +92,8 @@ class SceneGraphBuilder:
         if not self.object_history:
             return ""
         objects = ", ".join(self.object_history)
-        # relations = ". ".join(self.relation_history) if self.relation_history else "None" 
-        return f"Objects observed: {objects}."
+        relations = ". ".join(self.relation_history) if self.relation_history else "None"
+        return f"Objects observed: {objects}. Spatial relations: {relations}."
 
     def reset(self):
         if self.USE_SIMPLE:
