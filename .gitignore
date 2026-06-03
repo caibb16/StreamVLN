@@ -3,3 +3,6 @@ results/
 data/
 .vscode/
 download_hf_repo.py
+docs/
+config/sg_config.yaml
+paper/

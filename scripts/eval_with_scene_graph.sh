@@ -14,7 +14,7 @@ echo "EVAL_SPLIT: ${EVAL_SPLIT}"
 echo "SG_CONFIG: ${SG_CONFIG}"
 echo "USE_SCENE_GRAPH: true"
 
-torchrun --nproc_per_node=4 --master_port=$MASTER_PORT streamvln/evaluate_scene_graph.py \
+torchrun --nproc_per_node=1 --master_port=$MASTER_PORT streamvln/evaluate_scene_graph.py \
     --model_path $CHECKPOINT \
     --output_path $OUTPUT \
     --eval_split $EVAL_SPLIT \
